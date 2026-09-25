@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>身体部位闪卡</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f0f2f5;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        h1 { color: #333; margin-bottom: 15px; font-size: 22px; text-align: center; }
+        
+        /* 模式切换按钮组（3个按钮适配） */
+        .mode-selector {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+            width: 100%;
+            max-width: 360px;
+            justify-content: center;
+        }
+        .mode-btn {
+            flex: 1;
+            padding: 10px 0;
+            border: 2px solid #4CAF50;
+            background-color: white;
+            color: #4CAF50;
+            border-radius: 25px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        .mode-btn.active {
+            background-color: #4CAF50;
+            color: white;
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+        }
+        .mode-btn:active { transform: scale(0.95); }
+        
+        .mode-hint {
+            font-size: 14px;
+            color: #5d6b73;
+            margin-bottom: 12px;
+            text-align: center;
+            background: #e8f5e9;
+            padding: 6px 16px;
+            border-radius: 12px;
+        }
+        
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            width: 100%;
+            max-width: 420px;
+        }
+        .card {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            position: relative;
+            /* 布局：上方图片正方形，下方文字区按内容自适应高度（单词模式自然接近 图片4份:文字1份） */
+        }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
+        .card:active { transform: scale(0.97); }
+
+        /* 图片区：正方形，高度占卡片的4份 */
+        .card-img {
+            flex: 0 0 auto;
+            aspect-ratio: 1 / 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            padding: 4px;
+        }
+        .card-img img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+            pointer-events: none;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+        }
+
+        /* 文字区：位于正方形图片下方，高度按内容自适应（长句自动换行） */
+        .card-text {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2px 4px 4px;
+            text-align: center;
+            background: #fff;
+        }
+        .card-text .zh, .card-text .en {
+            max-width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        .card-text .zh {
+            line-height: 1.15;
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .card-text .en {
+            line-height: 1.15;
+            font-family: Arial, Helvetica, sans-serif;
+            letter-spacing: 0.2px;
+        }
+        /* 单词/句子模式：英文在前，英文比中文稍大 */
+        .card-text.en-first .en {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0e6e88;
+        }
+        .card-text.en-first .zh {
+            font-size: 9px;
+            color: #5d6b73;
+            margin-top: 1px;
+        }
+        /* 互动模式：中文在前，中文比英文稍大 */
+        .card-text.zh-first .zh {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0e6e88;
+        }
+        .card-text.zh-first .en {
+            font-size: 9px;
+            color: #5d6b73;
+            margin-top: 1px;
+        }
+        audio { display: none; }
+        
+        footer { margin-top: 18px; font-size: 13px; color: #888; text-align: center; }
+        
+        /* 激活遮罩层样式 */
+        #activationOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+            display: flex; align-items: center; justify-content: center; z-index: 999;
+        }
+        .overlay-card {
+            background: white; padding: 30px 20px; border-radius: 16px;
+            text-align: center; max-width: 320px; width: 90%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            animation: popIn 0.3s ease;
+        }
+        @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .overlay-icon { font-size: 48px; margin-bottom: 10px; }
+        .overlay-title { font-size: 20px; font-weight: bold; margin-bottom: 10px; color: #333; }
+        .overlay-desc { font-size: 14px; color: #666; margin-bottom: 20px; line-height: 1.5; }
+        .activate-btn {
+            background: #4CAF50; color: white; border: none; padding: 12px 30px;
+            border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>身体部位闪卡</h1>
+
+    <div class="mode-selector">
+        <button class="mode-btn active" id="wordModeBtn">单词</button>
+        <button class="mode-btn" id="sentenceModeBtn">句子</button>
+        <button class="mode-btn" id="interactiveModeBtn">互动</button>
+    </div>
+
+    <div class="mode-hint" id="modeHint">当前模式：单词</div>
+
+    <div class="card-grid" id="flashcardContainer"></div>
+
+    <footer>点击图片听发音 · 切换模式听不同音频</footer>
+
+    <!-- 首次激活遮罩 -->
+    <div id="activationOverlay">
+        <div class="overlay-card">
+            <div class="overlay-icon">👆</div>
+            <div class="overlay-title">欢迎来到身体部位闪卡</div>
+            <div class="overlay-desc">点击下方按钮激活音频播放<br>之后点击任意卡片即可听到发音</div>
+            <button class="activate-btn" id="activateBtn">开始学习</button>
+        </div>
+    </div>
+
+    <script>
+        const container = document.getElementById('flashcardContainer');
+        const wordBtn = document.getElementById('wordModeBtn');
+        const sentenceBtn = document.getElementById('sentenceModeBtn');
+        const interactiveBtn = document.getElementById('interactiveModeBtn');
+        const modeHint = document.getElementById('modeHint');
+        const overlay = document.getElementById('activationOverlay');
+        const activateBtn = document.getElementById('activateBtn');
+
+        let currentMode = 'word'; // 'word' | 'sentence' | 'interactive'
+        let isActivated = false;
+        const audioElements = [];
+
+        // ===== 27 条动作指令数据（附件内容） =====
+        const bodyActions = [
+            { zh: "点点头", en: "Nod your head" },
+            { zh: "摸摸你的头发", en: "Touch your hair" },
+            { zh: "做个鬼脸", en: "Make a funny face" },
+            { zh: "轻拍一下额头", en: "Tap your forehead" },
+            { zh: "挑起眉毛", en: "Raise your eyebrows" },
+            { zh: "眨眨眼", en: "Blink your eyes" },
+            { zh: "指着你的鼻子", en: "Point to your nose" },
+            { zh: "揪揪耳朵", en: "Pull your ears" },
+            { zh: "张开嘴巴", en: "Open your mouth" },
+            { zh: "露出牙齿", en: "Show your teeth" },
+            { zh: "伸出舌头", en: "Stick out your tongue" },
+            { zh: "鼓起脸颊", en: "Puff up your cheeks" },
+            { zh: "指指你的下巴", en: "Point to your chin" },
+            { zh: "摸摸你的脖子", en: "Touch your neck" },
+            { zh: "耸耸肩", en: "Shrug your shoulders" },
+            { zh: "拍拍胸脯", en: "Pat your chest" },
+            { zh: "挠挠你的后背", en: "Scratch your back" },
+            { zh: "揉揉肚子", en: "Rub your tummy" },
+            { zh: "双臂交叉", en: "Cross your arms" },
+            { zh: "手肘弯曲", en: "Bend your elbow" },
+            { zh: "拍拍手", en: "Clap your hands" },
+            { zh: "动动手指", en: "Wiggle your fingers" },
+            { zh: "给我看你的指甲", en: "Show me your nail" },
+            { zh: "并拢双腿", en: "Put your legs together" },
+            { zh: "摸摸你的膝盖", en: "Touch your knees" },
+            { zh: "跺跺脚", en: "Stamp your feet" },
+            { zh: "数数你的脚趾头", en: "Count your toes" }
+        ];
+
+        // ===== 单词模式数据（附件1：身体部位单词，英文在前） =====
+        const wordVocab = [
+            { en: "head", zh: "头" },
+            { en: "hair", zh: "头发" },
+            { en: "face", zh: "脸" },
+            { en: "forehead", zh: "额头" },
+            { en: "eyebrows", zh: "眉毛" },
+            { en: "eyes", zh: "眼睛" },
+            { en: "nose", zh: "鼻子" },
+            { en: "ears", zh: "耳朵" },
+            { en: "mouth", zh: "嘴巴" },
+            { en: "teeth", zh: "牙齿" },
+            { en: "tongue", zh: "舌头" },
+            { en: "cheeks", zh: "脸颊" },
+            { en: "chin", zh: "下巴" },
+            { en: "neck", zh: "脖子" },
+            { en: "shoulders", zh: "肩膀" },
+            { en: "chest", zh: "胸部" },
+            { en: "back", zh: "背部" },
+            { en: "tummy", zh: "肚子" },
+            { en: "arms", zh: "手臂" },
+            { en: "elbow", zh: "手肘" },
+            { en: "hands", zh: "手" },
+            { en: "fingers", zh: "手指" },
+            { en: "nail", zh: "指甲" },
+            { en: "legs", zh: "腿" },
+            { en: "knees", zh: "膝盖" },
+            { en: "feet", zh: "脚" },
+            { en: "toes", zh: "脚趾" }
+        ];
+
+        // ===== 句子模式数据（附件2：完整句子，英文在前） =====
+        const sentenceData = [
+            { en: "This is my head", zh: "这是我的头" },
+            { en: "This is my hair", zh: "这是我的头发" },
+            { en: "This is my face", zh: "这是我的脸" },
+            { en: "This is my forehead", zh: "这是我的额头" },
+            { en: "These are my eyebrows", zh: "这是我的眉毛" },
+            { en: "These are my eyes", zh: "这是我的眼睛" },
+            { en: "This is my nose", zh: "这是我的鼻子" },
+            { en: "These are my ears", zh: "这是我的耳朵" },
+            { en: "This is my mouth", zh: "这是我的嘴巴" },
+            { en: "These are my teeth", zh: "这是我的牙齿" },
+            { en: "This is my tongue", zh: "这是我的舌头" },
+            { en: "These are my cheeks", zh: "这是我的脸颊" },
+            { en: "This is my chin", zh: "这是我的下巴" },
+            { en: "This is my neck", zh: "这是我的脖子" },
+            { en: "These are my shoulders", zh: "这是我的肩膀" },
+            { en: "This is my chest", zh: "这是我的胸部" },
+            { en: "This is my back", zh: "这是我的背部" },
+            { en: "This is my tummy", zh: "这是我的肚子" },
+            { en: "These are my arms", zh: "这是我的手臂" },
+            { en: "This is my elbow", zh: "这是我的手肘" },
+            { en: "These are my hands", zh: "这是我的手" },
+            { en: "These are my fingers", zh: "这是我的手指" },
+            { en: "This is my nail", zh: "这是我的指甲" },
+            { en: "These are my legs", zh: "这是我的腿" },
+            { en: "These are my knees", zh: "这是我的膝盖" },
+            { en: "These are my feet", zh: "这是我的脚" },
+            { en: "These are my toes", zh: "这是我的脚趾" }
+        ];
+
+        // 模式对应的音频后缀：单词=无，句子=a，互动=b
+        const modeSuffixMap = {
+            'word': '',
+            'sentence': 'a',
+            'interactive': 'b'
+        };
+
+        function getAudioSrc(index, mode) {
+            const suffix = modeSuffixMap[mode];
+            return suffix ? `${index}${suffix}.mp3` : `${index}.mp3`;
+        }
+
+        function getModeData(mode) {
+            if (mode === 'word') return wordVocab;
+            if (mode === 'sentence') return sentenceData;
+            return bodyActions;
+        }
+
+        // 超长文本自动缩小字号，确保单行显示不换行
+        function fitSingleLine(el) {
+            if (!el) return;
+            if (el.scrollWidth <= el.clientWidth) return;
+            let size = parseFloat(window.getComputedStyle(el).fontSize) || 12;
+            while (el.scrollWidth > el.clientWidth && size > 6) {
+                size -= 0.5;
+                el.style.fontSize = size + 'px';
+            }
+        }
+
+        function generateCards() {
+            container.innerHTML = '';
+            audioElements.length = 0;
+
+            const data = getModeData(currentMode);
+            const enFirst = currentMode !== 'interactive';
+
+            data.forEach((item, idx) => {
+                const i = idx + 1;
+                const card = document.createElement('div');
+                card.className = 'card';
+                
+                // 图片区：只放图，不带文字
+                const imgWrap = document.createElement('div');
+                imgWrap.className = 'card-img';
+                const img = document.createElement('img');
+                img.src = `${i}.jpg`;
+                img.alt = item.zh;
+                img.loading = 'eager';
+                img.decoding = 'sync';
+                imgWrap.appendChild(img);
+
+                // 文字区：单词/句子模式英文在前（英文稍大），互动模式中文在前（中文稍大）
+                const textWrap = document.createElement('div');
+                textWrap.className = 'card-text ' + (enFirst ? 'en-first' : 'zh-first');
+                textWrap.innerHTML = enFirst
+                    ? `<div class="en">${item.en}</div><div class="zh">${item.zh}</div>`
+                    : `<div class="zh">${item.zh}</div><div class="en">${item.en}</div>`;
+
+                // 音频
+                const audio = document.createElement('audio');
+                audio.preload = 'auto';
+                audio.src = getAudioSrc(i, currentMode);
+                audio.id = `audio-${i}`;
+                audioElements.push(audio);
+
+                card.addEventListener('click', () => {
+                    if (!isActivated) {
+                        overlay.style.display = 'flex';
+                        return;
+                    }
+                    audio.currentTime = 0;
+                    audio.play().catch(e => console.log("Audio play failed:", e));
+                });
+
+                card.appendChild(imgWrap);
+                card.appendChild(textWrap);
+                card.appendChild(audio);
+                container.appendChild(card);
+
+                // 避免换行：超长中文/英文自动缩小字号
+                fitSingleLine(textWrap.querySelector('.zh'));
+                fitSingleLine(textWrap.querySelector('.en'));
+            });
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            
+            // 更新按钮高亮
+            wordBtn.classList.toggle('active', mode === 'word');
+            sentenceBtn.classList.toggle('active', mode === 'sentence');
+            interactiveBtn.classList.toggle('active', mode === 'interactive');
+
+            // 更新提示文字
+            if (mode === 'word') modeHint.textContent = '当前模式：单词';
+            else if (mode === 'sentence') modeHint.textContent = '当前模式：句子';
+            else modeHint.textContent = '当前模式：互动';
+
+            // 重建卡片：文字内容与音频随模式切换
+            generateCards();
+        }
+
+        function activatePage() {
+            isActivated = true;
+            overlay.style.display = 'none';
+            // 播放极短静音，绕过微信限制
+            const silentAudio = new Audio('data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoAAACAgICAAIAAgACA');
+            silentAudio.play().then(() => silentAudio.pause()).catch(() => {});
+        }
+
+        wordBtn.addEventListener('click', () => setMode('word'));
+        sentenceBtn.addEventListener('click', () => setMode('sentence'));
+        interactiveBtn.addEventListener('click', () => setMode('interactive'));
+        activateBtn.addEventListener('click', activatePage);
+
+        // 初始化
+        generateCards();
+    </script>
+</body>
+</html>
