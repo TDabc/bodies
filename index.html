@@ -6,6 +6,11 @@
     <title>身体部位闪卡</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        html {
+            /* 禁止安卓微信(X5)内核按字体设置自动放大文字，避免测量与实际渲染不一致导致截断 */
+            -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%;
+        }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             background-color: #f0f2f5;
@@ -324,16 +329,28 @@
             return bodyActions;
         }
 
-        // 超长文本自动缩小字号，确保单行显示不换行
+        // 超长文本自动缩小字号，确保单行完整显示不换行
         function fitSingleLine(el) {
             if (!el) return;
-            if (el.scrollWidth <= el.clientWidth) return;
+            el.style.fontSize = '';
             let size = parseFloat(window.getComputedStyle(el).fontSize) || 12;
-            while (el.scrollWidth > el.clientWidth && size > 6) {
-                size -= 0.5;
-                el.style.fontSize = size + 'px';
+            if (el.scrollWidth <= el.clientWidth) return;
+            // 按溢出比例一步缩到位并预留 0.5px 余量，再微调校准
+            let newSize = Math.max(6, size * (el.clientWidth / el.scrollWidth) - 0.5);
+            el.style.fontSize = newSize + 'px';
+            while (el.scrollWidth > el.clientWidth && newSize > 6) {
+                newSize -= 0.25;
+                el.style.fontSize = newSize + 'px';
             }
         }
+
+        // 字体渲染稳定后二次校准：部分手机浏览器（如微信 X5）文字缩放/字体替换晚于首轮测量
+        function fitAllText() {
+            document.querySelectorAll('.card-text .zh, .card-text .en').forEach(fitSingleLine);
+        }
+        window.addEventListener('load', fitAllText);
+        window.addEventListener('resize', fitAllText);
+        setTimeout(fitAllText, 800);
 
         function generateCards() {
             container.innerHTML = '';
