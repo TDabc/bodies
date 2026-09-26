@@ -332,7 +332,7 @@
         }
 
         // 按卡片宽度与文本长度确定性计算字号：单行完整显示，且文字区高度约卡宽的1/4（卡片高度的1/5）
-        // 不依赖浏览器字体测量，避免安卓微信内核(X5)测量偏差导致的截断
+        // 英文字宽系数取 0.72（覆盖粗体、安卓系统字体偏宽等差异），并加实际测量兜底
         function sizeCardTexts() {
             const vw = window.innerWidth;
             const gridW = Math.min(420, vw - 20);
@@ -345,8 +345,7 @@
                 const zhEl = tw.querySelector('.zh');
                 if (!enEl || !zhEl) return;
 
-                // 英文平均字宽按 0.58em（含余量），中文约 1.05em
-                let enSize = Math.min(12, (textW - 1) / Math.max(1, enEl.textContent.length * 0.58));
+                let enSize = Math.min(12, (textW - 1) / Math.max(1, enEl.textContent.length * 0.72));
                 let zhSize = Math.min(12, (textW - 1) / Math.max(1, zhEl.textContent.length * 1.05));
 
                 // 高度约束：英文+中文两行总高不超过文字区高度
@@ -361,6 +360,18 @@
 
                 enEl.style.fontSize = enSize + 'px';
                 zhEl.style.fontSize = zhSize + 'px';
+            });
+
+            // 兜底：个别设备字体渲染偏宽时，按实际测量再缩小，确保完整显示
+            document.querySelectorAll('.card-text .en, .card-text .zh').forEach(el => {
+                if (el.scrollWidth > el.clientWidth + 1) {
+                    let ns = Math.max(5, parseFloat(el.style.fontSize) * (el.clientWidth - 1) / el.scrollWidth - 0.5);
+                    el.style.fontSize = ns + 'px';
+                    while (el.scrollWidth > el.clientWidth + 1 && ns > 5) {
+                        ns -= 0.25;
+                        el.style.fontSize = ns + 'px';
+                    }
+                }
             });
         }
         window.addEventListener('resize', sizeCardTexts);
