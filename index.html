@@ -78,7 +78,8 @@
             cursor: pointer;
             transition: transform 0.2s ease, box-shadow 0.2s ease;
             position: relative;
-            /* 布局：上方图片正方形，下方文字区按内容自适应高度（单词模式自然接近 图片4份:文字1份） */
+            /* 卡片固定比例：上方图片正方形占4份 + 下方文字区占1份 → 宽:高 = 4:5 */
+            aspect-ratio: 4 / 5;
         }
         .card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
         .card:active { transform: scale(0.97); }
@@ -103,15 +104,16 @@
             image-rendering: crisp-edges;
         }
 
-        /* 文字区：位于正方形图片下方，高度按内容自适应（长句自动换行） */
+        /* 文字区：占卡片高度的1份（约卡宽1/4），单行显示 */
         .card-text {
-            flex: 1 1 auto;
+            flex: 1 1 0;
             min-height: 0;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            padding: 2px 4px 4px;
+            padding: 1px 4px 2px;
             text-align: center;
             background: #fff;
         }
@@ -329,28 +331,40 @@
             return bodyActions;
         }
 
-        // 超长文本自动缩小字号，确保单行完整显示不换行
-        function fitSingleLine(el) {
-            if (!el) return;
-            el.style.fontSize = '';
-            let size = parseFloat(window.getComputedStyle(el).fontSize) || 12;
-            if (el.scrollWidth <= el.clientWidth) return;
-            // 按溢出比例一步缩到位并预留 0.5px 余量，再微调校准
-            let newSize = Math.max(6, size * (el.clientWidth / el.scrollWidth) - 0.5);
-            el.style.fontSize = newSize + 'px';
-            while (el.scrollWidth > el.clientWidth && newSize > 6) {
-                newSize -= 0.25;
-                el.style.fontSize = newSize + 'px';
-            }
-        }
+        // 按卡片宽度与文本长度确定性计算字号：单行完整显示，且文字区高度约卡宽的1/4（卡片高度的1/5）
+        // 不依赖浏览器字体测量，避免安卓微信内核(X5)测量偏差导致的截断
+        function sizeCardTexts() {
+            const vw = window.innerWidth;
+            const gridW = Math.min(420, vw - 20);
+            const cardW = (gridW - 24) / 4;
+            const textW = cardW - 8;             // 文字可用宽度（扣除左右内边距）
+            const stripH = cardW / 4 - 3;        // 文字区可用高度（扣除上下内边距）
 
-        // 字体渲染稳定后二次校准：部分手机浏览器（如微信 X5）文字缩放/字体替换晚于首轮测量
-        function fitAllText() {
-            document.querySelectorAll('.card-text .zh, .card-text .en').forEach(fitSingleLine);
+            document.querySelectorAll('.card-text').forEach(tw => {
+                const enEl = tw.querySelector('.en');
+                const zhEl = tw.querySelector('.zh');
+                if (!enEl || !zhEl) return;
+
+                // 英文平均字宽按 0.58em（含余量），中文约 1.05em
+                let enSize = Math.min(12, (textW - 1) / Math.max(1, enEl.textContent.length * 0.58));
+                let zhSize = Math.min(12, (textW - 1) / Math.max(1, zhEl.textContent.length * 1.05));
+
+                // 高度约束：英文+中文两行总高不超过文字区高度
+                const totalH = 1.15 * (enSize + zhSize) + 1;
+                if (totalH > stripH && stripH > 4) {
+                    const k = (stripH - 1) / totalH;
+                    enSize *= k;
+                    zhSize *= k;
+                }
+                enSize = Math.max(5, enSize);
+                zhSize = Math.max(5, zhSize);
+
+                enEl.style.fontSize = enSize + 'px';
+                zhEl.style.fontSize = zhSize + 'px';
+            });
         }
-        window.addEventListener('load', fitAllText);
-        window.addEventListener('resize', fitAllText);
-        setTimeout(fitAllText, 800);
+        window.addEventListener('resize', sizeCardTexts);
+        window.addEventListener('load', sizeCardTexts);
 
         function generateCards() {
             container.innerHTML = '';
@@ -401,11 +415,10 @@
                 card.appendChild(textWrap);
                 card.appendChild(audio);
                 container.appendChild(card);
-
-                // 避免换行：超长中文/英文自动缩小字号
-                fitSingleLine(textWrap.querySelector('.zh'));
-                fitSingleLine(textWrap.querySelector('.en'));
             });
+
+            // 按卡片宽度与文本长度确定性计算字号，保证单行完整显示
+            sizeCardTexts();
         }
 
         function setMode(mode) {
