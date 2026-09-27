@@ -134,6 +134,9 @@
             line-height: 1.2;
             overflow: visible;
         }
+        /* 互动模式（中文在前）：中文行高1.0、英文行高1.15，腾出高度让英文不至于太小 */
+        .card-text.zh-first .fit:first-child { line-height: 1.0; }
+        .card-text.zh-first .fit:last-child { line-height: 1.15; }
         .card-text .zh, .card-text .en {
             display: inline-block;
             white-space: nowrap;
@@ -212,7 +215,7 @@
 
     <div class="card-grid" id="flashcardContainer"></div>
 
-    <footer>点击图片听发音 · 切换模式听不同音频 · v11</footer>
+    <footer>点击图片听发音 · 切换模式听不同音频 · v12</footer>
 
     <!-- 首次激活遮罩 -->
     <div id="activationOverlay">
@@ -353,12 +356,17 @@
         // 字号调小无效；transform是渲染级缩放，X5无法放大它。
         // 每张卡片的英文+中文两行包在 .block 里，按实际渲染宽/高测量后整体等比缩放，
         // 保证文字宽度永远不超过卡片（=图片）宽度，同时高度不超出文字区。
-        // 句子模式：英文尽量调大、中文调小（仅影响句子模式，单词/互动模式参数不变）。
+        // 句子模式：英文尽量调大、中文调小；互动模式：中文尽量调大、英文调小但保持可读。
+        // 单词模式参数保持默认（enFactor 0.85 / zhFactor 1.05 / zhCap 12）。
         function sizeCardTexts() {
             const isSentence = currentMode === 'sentence';
-            const enFactor = isSentence ? 0.52 : 0.85;  // 英文平均字宽系数（越小字越大）
-            const zhFactor = isSentence ? 1.6 : 1.05;   // 中文平均字宽系数（越大字越小）
-            const zhCap = isSentence ? 6.5 : 12;        // 中文字号上限
+            const isInteractive = currentMode === 'interactive';
+            const enFactor = isSentence ? 0.52 : (isInteractive ? 0.60 : 0.85); // 英文平均字宽系数（越小字越大）
+            const zhFactor = isSentence ? 1.6 : (isInteractive ? 1.0 : 1.05);   // 中文平均字宽系数（越大字越小）
+            const zhCap = isSentence ? 6.5 : 12;                                 // 中文字号上限
+            // 行高权重：互动模式中文行高1.0、英文行高1.15，其余两行均1.2
+            const lhZh = isInteractive ? 1.0 : 1.2;
+            const lhEn = isInteractive ? 1.15 : 1.2;
 
             document.querySelectorAll('.card-text').forEach(tw => {
                 try {
@@ -375,7 +383,7 @@
                     // 确定性起始字号（正常浏览器直接可用；X5会忽略小字号，由transform兜底）
                     let enSize = Math.min(12, (textW - 1) / Math.max(1, enEl.textContent.length * enFactor));
                     let zhSize = Math.min(zhCap, (textW - 1) / Math.max(1, zhEl.textContent.length * zhFactor));
-                    const totalH = 1.2 * (enSize + zhSize) + 1;
+                    const totalH = lhZh * zhSize + lhEn * enSize + 1;
                     if (totalH > stripH && stripH > 4) {
                         const k = (stripH - 1) / totalH;
                         enSize *= k;
