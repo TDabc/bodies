@@ -412,6 +412,70 @@
         setTimeout(sizeCardTexts, 800);
         setTimeout(sizeCardTexts, 1500);
 
+        // ===== 音频播放与受限并发预加载 =====
+        // 微信 WebView（X5/WKWebView）在音频未就绪时，设置 currentTime 可能抛异常，
+        // 必须 try/catch 保护，否则后面的 play() 不会执行 → 点击图片无声。
+        function playAudio(audio) {
+            try { audio.currentTime = 0; } catch (e) { /* 文件未就绪，忽略 */ }
+            const p = audio.play();
+            if (p && typeof p.catch === 'function') {
+                p.catch(() => {
+                    // 播放失败（文件未加载完 / 加载被中断）：重新触发加载后重试一次
+                    retryPlay(audio);
+                });
+            }
+        }
+
+        function retryPlay(audio) {
+            let retried = false;
+            const doRetry = () => {
+                if (retried) return;
+                retried = true;
+                try { audio.currentTime = 0; } catch (e) { /* 忽略 */ }
+                const p = audio.play();
+                if (p && typeof p.catch === 'function') {
+                    p.catch(e => console.warn('Audio retry failed:', e));
+                }
+            };
+            if (audio.readyState >= 1) {
+                doRetry();
+            } else {
+                // 等文件就绪后自动补播；load() 会重新发起一次加载（对之前被掐断的请求有效）
+                audio.addEventListener('canplay', doRetry, { once: true });
+                try { audio.load(); } catch (e) { /* 忽略 */ }
+            }
+        }
+
+        // 受限并发的预加载队列：同时只加载 PRELOAD_CONCURRENCY 个，逐个完成，
+        // 避免27个文件一拥而上被移动端微信掐断，也让大多数卡片点按即响。
+        const PRELOAD_CONCURRENCY = 2;
+        const preloadQueue = [];
+        let activePreloads = 0;
+
+        function schedulePreload(audio) {
+            preloadQueue.push(audio);
+            pumpPreloads();
+        }
+
+        function pumpPreloads() {
+            while (activePreloads < PRELOAD_CONCURRENCY && preloadQueue.length > 0) {
+                const a = preloadQueue.shift();
+                if (a.dataset.preloaded) continue;
+                a.dataset.preloaded = '1';
+                activePreloads++;
+                let done = false;
+                const finish = () => {
+                    if (done) return;
+                    done = true;
+                    activePreloads--;
+                    pumpPreloads();
+                };
+                a.addEventListener('canplay', finish, { once: true });
+                a.addEventListener('error', finish, { once: true });
+                a.load();
+            }
+        }
+
         function generateCards() {
             container.innerHTML = '';
             audioElements.length = 0;
@@ -431,7 +495,8 @@
                 img.src = `${i}.jpg`;
                 img.alt = item.zh;
                 img.loading = 'eager';
-                img.decoding = 'sync';
+                // 异步解码：避免27张大图同步解码阻塞主线程（卡片区有固定宽高比，不会引起布局跳动）
+                img.decoding = 'async';
                 imgWrap.appendChild(img);
 
                 // 文字区：单词/句子模式英文在前（英文稍大），互动模式中文在前（中文稍大）
@@ -441,20 +506,25 @@
                     ? `<div class="block"><div class="fit"><div class="en">${item.en}</div></div><div class="fit"><div class="zh">${item.zh}</div></div></div>`
                     : `<div class="block"><div class="fit"><div class="zh">${item.zh}</div></div><div class="fit"><div class="en">${item.en}</div></div></div>`;
 
-                // 音频
+                // 音频：先不批量下载（preload=none），由下方受限并发的预加载队列逐个加载，
+                // 避免微信里27个文件同时请求被中断/超时，导致点击没声音
                 const audio = document.createElement('audio');
-                audio.preload = 'auto';
+                audio.preload = 'none';
                 audio.src = getAudioSrc(i, currentMode);
                 audio.id = `audio-${i}`;
                 audioElements.push(audio);
+                // 加载失败时打日志（手机上看不到控制台，但便于排查问题卡片）
+                audio.addEventListener('error', () => {
+                    console.warn('Audio load error:', audio.src);
+                });
+                schedulePreload(audio);
 
                 card.addEventListener('click', () => {
                     if (!isActivated) {
                         overlay.style.display = 'flex';
                         return;
                     }
-                    audio.currentTime = 0;
-                    audio.play().catch(e => console.log("Audio play failed:", e));
+                    playAudio(audio);
                 });
 
                 card.appendChild(imgWrap);
